@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>弾幕よけゲーム</title>
+<script>
+let canvas, context;                            //キャンバス
+const [width, height] = [500, 600];             //キャンバスサイズ
+const stars = new Array();                      //星
+let points = new Array(), shots = new Array();  //弾幕出現ポイント、弾
+let px, py, time = 0;                           //プレイヤーの座標、タイム
+let startTime, prevTime, elapsedTime;           //開始、直前、経過時間
+let status = "ready";                           //ステータス（ready/play/end)
+
+//弾幕出現ポイント、弾クラス
+class Shot {
+    constructor(type, x = 0, y = 0, angle = 0, delay = 0) {
+        this.type = type;                                           //Shotクラスのタイプ　point 出現ポイント　　shot 弾
+        this.x = Math.floor(Math.random() * (width - 50)) + 25;     //出現ポイントの座標はランダム
+        this.y = Math.floor(Math.random() * (height - 50)) + 25;
+        this.r = width / 2;                                         //半径は、出現ポイントなら250、弾なら10
+        if (type == "shot") [this.x, this.y, this.r] = [x, y, 10];
+        this.angle = angle;
+        this.delay = delay;
+    }
+    update() {
+        if (this.type == "point") {             //出現ポイントなら
+            //出現ポイントの縮小、描画
+            this.r -= this.r / 20;
+            drawCircle(this.x, this.y, this.r, null, "cyan");       //水色の円を描く
+        } else if (this.type == "shot") {                           //弾なら
+            //弾の移動、描画
+            this.delay--;
+            if (this.delay < 0) {                                   //遅延時間が０なら
+                this.x += Math.cos(this.angle) * 2;                 //弾をangleの方向に動かす
+                this.y += Math.sin(this.angle) * 2;
+                drawCircle(this.x, this.y, this.r, "lightyellow", "lime");  //線の色黄緑、塗りつぶしの色薄黄色の円を描く
+            }   
+        }
+    }
+}
+
+const init = () => {
+    //キャンバスの取得
+    canvas = document.getElementById("space");
+    context = canvas.getContext("2d");
+    [canvas.width, canvas.height] = [width, height];        //キャンバスのサイズを500×600に
+    context.lineWidth = 4;                                  //線の太さ４
+    //マウスイベントの登録
+    canvas.addEventListener("click", startGame);            //クリックした時
+    canvas.addEventListener("mousemove", movePlayer);       //マウスを動かしたとき
+    //星を作成
+    for (let i=0; i<100; i++) {
+        const x = Math.random() * width;                    //星の座標はランダム、半径は０～1.5
+        const y = Math.random() * height;
+        const r = Math.random() * 1.5;
+        stars.push({x:x, y:y, r:r})
+    }
+    update();
+}
+
+const startGame = event => {
+    //ゲーム開始
+    if (status != "play") {
+        [points, shots] = [[], []];                         //出現ポイントと弾をクリア
+        [startTime, prevTime, elapsedTime] = [Date.now(), Date.now(), 0];
+        movePlayer(event);                                  //クリックした一にプレイヤーを表示
+        status = "play"
+    }
+}
+
+const movePlayer = event => {
+    //プレイヤーの移動
+    const canvasRect = canvas.getBoundingClientRect();      //キャンバス内のマウスカーソルの座標
+    px = event.clientX - canvasRect.left;
+    py = event.clientY - canvasRect.top - 10;
+}
+
+const update = () => {
+    //宇宙空間（星のまたたき）を描画
+    context.fillStyle = "rgba(0,0,0,0.5)";              //キャンバスを半透明の黒で塗りつぶす
+    context.fillRect(0,0,canvas.width,canvas.height);
+    for (const star of stars) {
+        if (Math.random() > 0.1) drawCircle(star.x, star.y, "white");   //乱数が0.1より大きいなら、白い円（星）を描く 
+    }
+    //出現ポイントの発生、プレイヤーの描画
+    if (status == "play") {
+        //経過時間、タイムの取得
+        elapsedTime += Date.now() - prevTime;               //経過時間と（ゲーム開始からの）タイムを計算
+        [prevTime, time] = [Date.now(), Date.now() - startTime];
+        //出現ポイントの発生
+        if (elapsedTime > 1000) {                   //1000ミリ秒経つごとに出現ポイント発声
+            elapsedTime = 0;
+            points.push(new Shot("point"));       
+        }
+        //プレイヤーの描画
+        const shape = [[0, 10], [20, 20], [0, -20], [-20, 20]];     //プレイヤーの形のデータ
+        context.fillStyle = "tomato";                               //プレイヤーの色は明るい赤
+        context.beginPath();
+        context.moveTo(px + shape[0][0], py + shape[0][1]);
+        for (let i=1; i<shape.length; i++) {
+            context.lineTo(px + shape[i][0], py + shape[i][1]);
+        }
+        context.fill();
+    }
+    //出現ポイントの更新
+    for (let i=points.length-1; i>=0; i--) {        //出現ポイントの数だけくり返し
+        if (points[i].r <= 1) {                      //出現ポイントの半径が１以下になったら
+            //弾を発射
+            const [x, y] = [points[i].x, points[i].y];
+            let angle = 0;
+            if ((time/1000 > 10)&&(Math.random() > 0.5)) {  //タイムが10秒を過ぎ50％の確率なら
+                //円形
+                for (let j=0; j<16; j++) {                  //円形（16方向）に弾を撃つ
+                    angle += Math.PI*2 / 16;
+                    shots.push(new Shot("shot", x, y, angle));
+                }            
+            } else if ((time/1000 > 20)&&(Math.random() > 0.5)) {   //タイムが20秒を過ぎ50％の確率なら
+                //渦巻き
+                for (let j=0; j<64; j++) {
+                    angle += Math.PI*2 / 18;
+                    shots.push(new Shot("shot", x, y, angle, 63-j));       
+                }
+            } else {
+                //ランダムに5個
+                for (let j=0; j<5; j++) {                   //ランダムな方向に5個弾を撃つ
+                    angle += Math.PI*2 *Math.random();
+                    shots.push(new Shot("shot", x, y, angle));
+                }
+            }
+            points.splice(i, 1);                            //(弾を撃った)出現ポイントを削除       
+        } else {
+            points[i].update();                             //出現ポイントの円を小さくする
+        } 
+    }
+    //弾の更新、当たり判定
+    for (let i=shots.length-1; i>=0; i--) {                 //弾の数だけくり返し
+        shots[i].update();
+        let[x, y, r] = [shots[i].x, shots[i].y, shots[i].r];
+        if (Math.hypot(px-x, py-y) < 20) status = "end";        //プレイヤーと弾の距離が20未満ならstatusをendに
+        if ((x < -r) || (x > width+r) || (y < -r) || (y > height+r)) {   //キャンバスの外に出た弾は削除
+            shots.splice(i, 1);
+        }
+    }
+    //タイム、ゲームオーバーの表示
+    drawText(`TIME : ${(time/1000).toFixed(1)}`, 5, 5, 20, "white", "left", "top");    //キャンバスの左上に白色でタイムを表示
+    if (status == "end") {
+        drawText("GAMEOVER", width/2, height/2-30, 50, "red");              //キャンバスの中央に赤色でGAMEOVERなどと表示
+        drawText("Click here to retry", width/2, height/2+20, 30, "red");
+    } else if (status == "ready") {
+        drawText("Click here to start", width/2, height/2+20, 30, "red");
+    }
+    window.requestAnimationFrame(update);                                   //アニメーションを行う
+}
+
+const drawCircle = (x, y, r, color1, color2 = null) => {
+    //円の描画
+    context.fillStyle = color1;
+    context.strokeStyle = color2;
+    context.beginPath();
+    context.arc(x, y, r, 0, Math.PI*2);
+    if (color2 != null) context.stroke();                   //引数color2がnullでなければ円の枠線を描く
+    if (color1 != null) context.fill();                     //引数color1がnullでなければ円を塗りつぶす
+}
+
+const drawText = (text, x, y, size, color, align = "center", base = "middle") => {
+    //テキストの描画
+    context.font = `${size}px Arial Black`;
+    context.textAlign = align;                              //文字の左右の配置
+    context.textBaseline = base;                            //文字の基準線
+    context.fillStyle = color;
+    context.fillText(text, x, y);
+}
+</script>
+</head>
+<body onload="init()">
+<p>弾よけゲーム</p>
+<canvas id="space"></canvas>
+</body>
+</html>
